@@ -1,9 +1,11 @@
 #include <tree_sitter/parser.h>
-#include <cwctype>
 
 namespace {
 
-  using std::iswspace;
+
+  static bool iswspace(char c) {
+    return c == 32 || (c >= 9 && c <= 13);
+  }
 
   enum TokenType {
     COMMENT,
@@ -30,7 +32,7 @@ namespace {
     }
 
     static bool scan_multiline_content(TSLexer *lexer) {
-      // Initialize lua multiline content level count
+      // Initialize terra multiline content level count
       int start_level = 0;
       int end_level = 0;
 
@@ -208,24 +210,24 @@ namespace {
 
 extern "C" {
 
-  void *tree_sitter_lua_external_scanner_create() {
+  void *tree_sitter_terra_external_scanner_create() {
     return new Scanner();
   }
 
-  void tree_sitter_lua_external_scanner_destroy(void *payload) {
+  void tree_sitter_terra_external_scanner_destroy(void *payload) {
     Scanner *scanner = static_cast<Scanner *>(payload);
     delete scanner;
   }
 
-  bool tree_sitter_lua_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
+  bool tree_sitter_terra_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
     Scanner *scanner = static_cast<Scanner *>(payload);
     return scanner->scan(lexer, valid_symbols);
   }
 
-  unsigned tree_sitter_lua_external_scanner_serialize(void *payload, char *buffer) {
+  unsigned tree_sitter_terra_external_scanner_serialize(void *payload, char *buffer) {
     return 0;
   }
 
-  void tree_sitter_lua_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {}
+  void tree_sitter_terra_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {}
 
 }
