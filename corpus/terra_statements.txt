@@ -1,0 +1,286 @@
+============================================
+Struct statements
+============================================
+
+struct A {
+  x: int;
+}
+print(A)
+
+---
+
+(program
+  (struct_statement (identifier)
+    (struct_members
+      (identifier)
+      (type (identifier))))
+  (function_call (identifier)
+    (arguments (identifier))))
+
+============================================
+Basic Terra Function
+============================================
+
+terra X()
+
+end
+
+
+---
+
+(program (terra_func_statement (identifier) (terra_parameters)))
+
+============================================
+Terra Function with args
+============================================
+
+terra X(a: int, b: rawstring)
+
+end
+
+
+---
+
+(program
+  (terra_func_statement (identifier)
+    (terra_parameters
+      (identifier)
+      (type (identifier))
+      (identifier)
+      (type (identifier))
+    )
+  )
+)
+
+============================================
+Terra Function with var statements
+============================================
+
+terra X()
+  var a = 5
+  var b: int = 10
+end
+
+---
+
+(program
+  (terra_func_statement (identifier)
+    (terra_parameters)
+    (terra_body
+      (var_statement (identifier) (number))
+      (var_statement (identifier) (type (identifier)) (number))
+    )
+  )
+)
+
+============================================
+Terra Function with short escape
+============================================
+
+local x = 5
+
+terra X()
+  var a = [x]
+end
+
+---
+
+(program
+  (local_variable_declaration (variable_declarator (identifier)) (number))
+  (terra_func_statement (identifier)
+    (terra_parameters)
+    (terra_body
+      (var_statement (identifier) (escape_short (identifier)))
+    )
+  )
+)
+
+
+============================================
+Terra return
+============================================
+
+terra X()
+  return 1
+end
+
+---
+
+(program
+  (terra_func_statement (identifier)
+    (terra_parameters)
+    (terra_body
+      (terra_return (number))
+    )
+  )
+)
+
+============================================
+Terra Function with if statement 1
+============================================
+
+terra X()
+  var a = 5
+  if a == 5 then
+    return 1
+  end
+end
+
+---
+
+(program
+  (terra_func_statement (identifier)
+    (terra_parameters)
+    (terra_body
+      (var_statement (identifier) (number))
+      (terra_if (terra_binary_op (identifier) (number))
+        (terra_then (terra_return (number)))
+      )
+    )
+  )
+)
+============================================
+Terra Function with function call
+============================================
+
+terra X()
+  print("asdf")
+end
+
+---
+
+(program
+  (terra_func_statement (identifier)
+    (terra_parameters)
+    (terra_body
+      (function_call (identifier) (arguments (string)))
+    )
+  )
+)
+============================================
+Terra Function with if statement 3
+============================================
+
+terra Y()
+	if result ~= vk.VK_SUCCESS then
+		C.printf("VKCHECK failed for: %s\n", [func])
+		terralib.traceback(nil)
+	end
+end
+
+---
+
+(program
+  (terra_func_statement (identifier)
+    (terra_parameters)
+    (terra_body
+      (terra_if (terra_binary_op (identifier) (terra_access (identifier) (property_identifier)))
+        (terra_then
+          (function_call (terra_access (identifier) (property_identifier)) (arguments (string) (escape_short (identifier))))
+          (function_call (terra_access (identifier) (property_identifier)) (arguments (nil)))
+        )
+      )
+    )
+  )
+)
+
+
+============================================
+Create long quote
+============================================
+
+x = quote
+  return 5
+end
+
+---
+
+(program
+  (variable_declaration (variable_declarator (identifier))
+    (quote_long
+      (quote_body
+        (terra_return (number))
+      )
+    )
+  )
+)
+
+
+
+============================================
+Create short quotes
+============================================
+
+x = `1 == 2
+y = `C.printf
+z = `[y]("hi\n")
+---
+
+(program
+  (variable_declaration (variable_declarator (identifier))
+    (quote_short
+      (terra_binary_op (number) (number))
+    )
+  )
+  (variable_declaration (variable_declarator (identifier))
+    (quote_short
+      (terra_access (identifier) (property_identifier))
+    )
+  )
+  (variable_declaration (variable_declarator (identifier))
+    (quote_short
+      (function_call
+        (escape_short (identifier))
+        (arguments (string))
+      )
+    )
+  )
+)
+============================================
+Macro
+============================================
+
+local VKCHECK = macro(function(func, ...)
+	local args = {...}
+	return quote
+		var result = func([args])
+		if result ~= vk.VK_SUCCESS then
+			C.printf("VKCHECK failed for: %s\n", [func])
+			terralib.traceback(nil)
+		end
+	in
+		result
+	end
+end)
+
+---
+
+(program
+  (local_variable_declaration (variable_declarator (identifier))
+      (function_call (identifier) (arguments
+        (function_definition
+          (parameters (identifier) (spread))
+          (local_variable_declaration (variable_declarator (identifier)) (table (field (spread))))
+          (return_statement
+            (quote_long
+              (quote_body
+                (var_statement (identifier) (function_call (identifier) (arguments (escape_short (identifier)))))
+                (terra_if (terra_binary_op (identifier) (terra_access (identifier) (property_identifier)))
+                  (terra_then
+                    (function_call
+                      (terra_access (identifier) (property_identifier))
+                      (arguments (string) (escape_short (identifier))))
+                    (function_call
+                      (terra_access (identifier) (property_identifier))
+                      (arguments (nil)))
+                  )
+                )
+              )
+              (quote_in (identifier))
+            )
+          )
+        )
+      )
+    )
+  )
+)

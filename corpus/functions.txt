@@ -94,6 +94,8 @@ f(r(), 10)
 
 g(5, r())
 
+table.concat({}, '')
+
 ---
 
 (program
@@ -104,4 +106,6 @@ g(5, r())
     (arguments (function_call (identifier) (arguments)) (number)))
 
   (function_call (identifier)
-    (arguments (number) (function_call (identifier) (arguments)))))
+    (arguments (number) (function_call (identifier) (arguments))))
+  (function_call (field_expression (identifier) (property_identifier)) (arguments (table) (string)))
+)

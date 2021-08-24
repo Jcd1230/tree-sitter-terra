@@ -13,26 +13,40 @@ const PREC = {
   PLUS: 9,      //=> + -
   MULTI: 10,    //=> * / // %
   UNARY: 11,    //=> not # - ~
-  POWER: 12     //=> ^
+  POWER: 12,     //=> ^
+  // Terra extensions:
+  QUOTE: -1,     //=> `
+  ESCAPE: 0
 }
 
 module.exports = grammar({
   name: 'terra',
 
+
+  word: $ => $.identifier,
   extras: $ => [
     $.comment,
     /[\s\n]/
   ],
 
   inline: $ => [
-    $._statement
+    $._statement,
+    $.type,
+    $._symbol,
+    $._typed_symbol,
+    $._terra_statement,
   ],
 
   conflicts: $ => [
     [$._prefix],
     [$._expression, $._variable_declarator],
     [$._expression, $.function_call_statement],
-    [$.function_name, $.function_name_field]
+    [$.function_name, $.function_name_field],
+    [$._terra_prefix, $._terra_expression],
+    [$._terra_prefix, $.terra_body],
+    // [$._terra_expression, $._terra_variable_declarator],
+    // [$._terra_expression, $.terra_function_call_statement],
+    // [$._terra_statement, $.terra_function_call_statement],
   ],
 
   externals: $ => [
@@ -52,12 +66,6 @@ module.exports = grammar({
       optional($._empty_statement)
     ),
 
-    terra_return_statement: $ => seq(
-      'return',
-      optional(commaSeq($._terra_expression)),
-      optional($._empty_statement)
-    ),
-
     // Statements
     _statement: $ => choice(
       alias($._expression, $.expression),
@@ -74,48 +82,17 @@ module.exports = grammar({
 
       $.goto_statement,
       $.break_statement,
-      $.struct_def,
 
       $.label_statement,
       $._empty_statement,
+      $.emit_statement,
+
+      $.struct_statement,
+      $.terra_func_statement,
 
       alias($.function_statement, $.function),
       alias($.local_function_statement, $.local_function),
-      alias($.function_call_statement, $.function_call),
-      $.terra_function_statement
-    ),
-
-    _terra_statement: $ => choice(
-      // alias($._terra_expression, $.terra_expression),
-      $.terra_variable_declaration,
-      $.terra_do_statement,
-      $.terra_if_statement,
-      $.terra_while_statement,
-      $.terra_for_statement,
-      $.goto_statement,
-      $.break_statement,
-      $.escape_statement,
-      $.label_statement,
-      $._empty_statement,
-      $.terra_function_call
-    ),
-
-    quote_expression: $ => choice(
-      seq('quote', terra_statement_list($), optional(seq('in', commaSeq($._terra_expression))), 'end'),
-      prec.left(seq('`', $._terra_statement))
-    ),
-
-    escape_statement: $ => choice(
-      seq('escape', repeat(choice($._statement, seq('emit', $._expression))), 'end'),
-      seq('[', $._statement, ']')
-    ),
-
-    struct_def: $ => seq(
-      'struct',
-      $.identifier,
-      '{',
-      repeat($.terra_typed_identifier),
-      '}'
+      alias($.function_call_statement, $.function_call)
     ),
 
     // Statements: Variable eclarations
@@ -124,7 +101,6 @@ module.exports = grammar({
       '=',
       commaSeq($._expression)
     ),
-    terra_variable_declaration: $ => prec.left(seq('var', commaSeq($.terra_opt_typed_identifier), optional(seq('=', commaSeq($._terra_expression))))),
 
     local_variable_declaration: $ => seq(
       'local',
@@ -137,99 +113,82 @@ module.exports = grammar({
       seq($._prefix, '[', $._expression, ']'),
       $.field_expression
     ),
-    terra_opt_typed_identifier: $ => seq($.identifier, optional(seq(':', $._expression))),
-    terra_typed_identifier: $ => seq($.identifier, ':', $._expression),
+
 
     field_expression: $ => seq($._prefix, '.', alias($.identifier, $.property_identifier)),
 
     _local_variable_declarator: $ => commaSeq($.identifier),
 
-    terra_condition: $ => alias($._terra_expression, $.condition_expression),
-
     // Statements: Control statements
     do_statement: $ => seq(
       'do',
-      statement_list($),
+      repeat($._statement),
+      optional($.return_statement),
       'end'
     ),
-    terra_do_statement: $ => seq('do', terra_statement_list($), 'end'),
 
     if_statement: $ => seq(
       'if',
       alias($._expression, $.condition_expression),
       'then',
-      statement_list($),
+      repeat($._statement),
+      optional($.return_statement),
       repeat($.elseif),
       optional($.else),
       'end'
     ),
-    terra_if_statement: $ => seq(
-      'if',
-      alias($._terra_expression, $.condition_expression),
-      'then',
-      terra_statement_list($),
-      repeat($.terra_elseif),
-      optional($.terra_else),
-      'end'
-    ),
-
-
 
     elseif: $ => seq(
       'elseif',
       alias($._expression, $.condition_expression),
       'then',
-      statement_list($)
+      repeat($._statement),
+      optional($.return_statement)
     ),
-
-    terra_elseif: $ => seq(
-      'elseif',
-      alias($._terra_expression, $.condition_expression),
-      'then',
-      terra_statement_list($)
-    ),
-
 
     else: $ => seq(
       'else',
-      statement_list($)
+      repeat($._statement),
+      optional($.return_statement)
     ),
-    terra_else: $ => seq('else', terra_statement_list($)),
 
     while_statement: $ => seq(
       'while',
       alias($._expression, $.condition_expression),
       'do',
-      statement_list($),
+      repeat($._statement),
+      optional($.return_statement),
       'end'
     ),
-    terra_while_statement: $ => seq('while', $.terra_condition, 'do', terra_statement_list($), 'end'),
 
     repeat_statement: $ => seq(
       'repeat',
-      statement_list($),
+      repeat($._statement),
+      optional($.return_statement),
       'until',
       alias($._expression, $.condition_expression)
     ),
-    terra_repeat_statement: $ => seq('repeat', terra_statement_list($), 'until', $.terra_condition),
 
     // Statements: For statements
     for_statement: $ => seq(
       'for',
       alias($._loop_expression, $.loop_expression),
       'do',
-      statement_list($),
+      repeat($._statement),
+      optional($.return_statement),
       'end'
     ),
 
-    terra_for_statement: $ => seq('for', $.terra_loop_expression, 'do', terra_statement_list($), 'end'),
     for_in_statement: $ => seq(
       'for',
       alias($._in_loop_expression, $.loop_expression),
       'do',
-      statement_list($),
+      repeat($._statement),
+      optional($.return_statement),
       'end'
     ),
+
+    emit_statement: $ => seq('emit', alias($._expression, $.emit_expression)),
 
     _loop_expression: $ => seq(
       $.identifier,
@@ -239,8 +198,6 @@ module.exports = grammar({
       $._expression,
       optional(seq(',', $._expression))
     ),
-    terra_loop_expression: $ => seq($.terra_typed_identifier, '=', $._terra_expression, ',', $._terra_expression, optional(seq(',', $._terra_expression))),
-
 
     _in_loop_expression: $ => seq(
       commaSeq($.identifier),
@@ -272,12 +229,6 @@ module.exports = grammar({
       $._function_body
     ),
 
-    terra_function_statement: $ => seq(
-      'terra',
-      $.function_name,
-      $._terra_function_body
-    ),
-
     local_function_statement: $ => seq(
       'local',
       'function',
@@ -289,18 +240,15 @@ module.exports = grammar({
       seq($._prefix, $.arguments),
       seq($._prefix, ':', alias($.identifier, $.method), $.arguments)
     )),
-    terra_function_call: $ => prec.dynamic(PREC.PRIORITY, choice(
-      seq($._terra_prefix, $.terra_arguments),
-      seq($._terra_prefix, ':', alias($.identifier, $.method), $.terra_arguments)
-    )),
 
-    arguments: $ => choice(
-      seq('(', optional(commaSeq($._expression)), ')'),
+    terra_arguments: $ => choice(
+      seq('(', optional(commaSeq($._terra_expression)), ')'),
       $.table,
       $.string
     ),
-    terra_arguments: $ => choice(
-      seq('(', optional(commaSeq($._terra_expression)), ')'),
+
+    arguments: $ => choice(
+      seq('(', optional(commaSeq($._expression)), ')'),
       $.table,
       $.string
     ),
@@ -326,25 +274,11 @@ module.exports = grammar({
       )),
       ')'
     ),
-    terra_parameters: $ => seq(
-      '(',
-      optional(seq(
-        choice($.terra_spread, $.terra_typed_identifier),
-        repeat(seq(',', $.terra_typed_identifier)),
-        optional(seq(',', $.terra_spread)),
-      )),
-      ')'
-    ),
 
     _function_body: $ => seq(
       $.parameters,
-      statement_list($),
-      'end'
-    ),
-
-    _terra_function_body: $ => seq(
-      $.terra_parameters,
-      terra_statement_list($),
+      repeat($._statement),
+      optional($.return_statement),
       'end'
     ),
 
@@ -352,41 +286,149 @@ module.exports = grammar({
     _expression: $ => choice(
       $.spread,
       $._prefix,
+
       $.next,
 
       $.function_definition,
-      $.quote_expression,
+      $.terra_func_expression,
+      $.struct_expression,
+      $.quote_long,
+      $.quote_short,
+      $.func_ptr,
 
       $.table,
 
       $.binary_operation,
       $.unary_operation,
-      $.identifier,
-      $._simple_value
-    ),
-    _simple_value: $ => choice(
+
       $.string,
       $.number,
       $.nil,
       $.true,
       $.false,
+      $.identifier,
     ),
+    quote_long: $ => seq(
+      'quote',
+      terra_body($, 'quote_body'),
+      optional($.quote_in),
+      'end'
+    ),
+    quote_in: $ => seq(
+      'in', commaSeq($._terra_expression)
+    ),
+
+    quote_short: $ => prec(PREC.QUOTE, seq(
+      '`', $._terra_expression
+    )),
+
+    _escape: $ => choice(
+      $.escape_short,
+      $.escape_long
+    ),
+    escape_short: $ => seq('[', $._expression, ']'),
+    escape_long: $ => seq(
+      'escape',
+      repeat($._statement),
+      'end'
+    ),
+
+    _terra_do_block: $ => seq('do', terra_body($), 'end'),
+    terra_if: $ => seq(
+      'if', $._terra_expression, 'then', terra_body($, 'terra_then'),
+      repeat(seq('elseif', $._terra_expression, 'then', terra_body($, 'terra_elseif'))),
+      optional(seq('else', $._terra_expression, 'then', terra_body($, 'terra_else'))),
+      'end'
+    ),
+    terra_for: $ => seq(
+      'for', $._symbol, '=', $._terra_expression, ',', $._terra_expression,
+      $._terra_do_block
+    ),
+    terra_while: $ => seq(
+      'while', $._terra_expression, $._terra_do_block
+    ),
+    terra_repeat: $ => seq(
+      'repeat', terra_body($), 'until', $._terra_expression
+    ),
+
+    _terra_empty: $ => ';',
+    // Return statement
+    terra_return: $ => seq(
+      'return',
+      optional(commaSeq($._terra_expression)),
+      optional($._terra_empty)
+    ),
+    _terra_statement: $ => choice(
+      alias($._terra_do_block, $.terra_do),
+      $.var_statement,
+      $.terra_if,
+      $.terra_for,
+      $.terra_while,
+      $.terra_repeat,
+      $.escape_long,
+      $.escape_short,
+      alias($.terra_call, $.function_call),
+      $.assignment,
+    ),
+    assignment: $ => seq($._terra_prefix,'=',$._terra_expression),
+
     _terra_expression: $ => choice(
-      $.terra_spread,
+      $.escape_short,
+      $.escape_long,
+      $.terra_binary_op,
+      $.terra_unary_op,
+      $.string,
+      $.table,
+      $.nil,
+      $.true,
+      $.false,
+      $.number,
+      alias($.terra_call, $.function_call),
       $._terra_prefix,
-      alias($.table, $.terra_table),
-
-      $.terra_binary_operation,
-      $.terra_unary_operation,
-      $.escape_statement,
-      alias($.identifier, $.terra_identifier),
-      $._simple_value
+    ),
+    _terra_prefix: $ => choice(
+      $.identifier,
+      $.escape_short,
+      seq('(', $._terra_expression, ')'),
+      alias($.terra_call, $.function_call),
+      $.terra_access,
     ),
 
+    terra_access: $ => prec(4,choice(
+      seq($._terra_prefix, '[', $._terra_expression, ']'), // Array access
+      seq($._terra_prefix, '.', choice(alias($.identifier, $.property_identifier), $.escape_short)), // Struct access
+    )),
+
+    terra_call: $ => prec(4, choice(
+      seq($._terra_prefix, alias($.terra_arguments, $.arguments)),
+    )),
+
+    _symbol: $ => choice(
+      $.identifier,
+      $.escape_short
+    ),
+    _typed_symbol: $ => choice(
+      seq($.identifier, ':', $.type),
+      prec(2, $.escape_short)
+    ),
+
+    var_statement: $ => seq(
+      'var',
+      commaSeq(choice($._typed_symbol,$._symbol)),
+      optional(
+        seq('=', commaSeq($._terra_expression))
+      )
+    ),
+
+    type: $ => $._expression,
+
+    terra_parameters: $ => seq('(',optional(commaSeq($._typed_symbol)), ')'),
+    struct_members: $ => seq('{', repeat(seq($._typed_symbol, optional(choice(',',';')))), '}'),
+    struct_expression: $ => seq('struct', $.struct_members),
+    struct_statement: $ => seq('struct', $.identifier, $.struct_members),
 
     // Expressions: Common
     spread: $ => '...',
-    terra_spread: $ => '...',
 
     self: $ => 'self',
 
@@ -401,16 +443,25 @@ module.exports = grammar({
       prec(-1, alias($.function_call_statement, $.function_call)),
       seq('(', $._expression, ')')
     ),
-    _terra_prefix: $ => choice(
-      // prec(-1, $.terra_function_call),
-      seq('(', $._terra_expression, ')')
-    ),
 
     // Expressions: Function definition
     function_definition: $ => seq(
       'function',
       $._function_body
     ),
+
+    terra_func_expression: $ => seq(
+      'terra',
+      $.terra_parameters,
+      terra_body($),
+      'end'
+    ),
+    terra_func_statement: $ => seq(
+      'terra', $.identifier, $.terra_parameters, terra_body($), 'end'
+    ),
+
+    type: $ => alias($._expression, $.type),
+    func_ptr: $ => prec.left(seq($.type, '->', $.type)),
 
     // Expressions: Table expressions
     table: $ => seq(
@@ -471,51 +522,10 @@ module.exports = grammar({
     ),
 
     unary_operation: $ => prec.left(PREC.UNARY, seq(
-      choice('not', '#', '-', '~'),
+      choice('not', '#', '-', '~', '&'),
       $._expression
     )),
 
-    // Expressions: Operation expressions
-    terra_binary_operation: $ => choice(
-      ...[
-        ['or', PREC.OR],
-        ['and', PREC.AND],
-        ['<', PREC.COMPARE],
-        ['<=', PREC.COMPARE],
-        ['==', PREC.COMPARE],
-        ['~=', PREC.COMPARE],
-        ['>=', PREC.COMPARE],
-        ['>', PREC.COMPARE],
-        ['|', PREC.BIT_OR],
-        ['~', PREC.BIT_NOT],
-        ['&', PREC.BIT_AND],
-        ['<<', PREC.SHIFT],
-        ['>>', PREC.SHIFT],
-        ['+', PREC.PLUS],
-        ['-', PREC.PLUS],
-        ['*', PREC.MULTI],
-        ['/', PREC.MULTI],
-        ['//', PREC.MULTI],
-        ['%', PREC.MULTI],
-      ].map(([operator, precedence]) => prec.left(precedence, seq(
-        $._terra_expression,
-        operator,
-        $._terra_expression
-      ))),
-      ...[
-        ['..', PREC.CONCAT],
-        ['^', PREC.POWER],
-      ].map(([operator, precedence]) => prec.right(precedence, seq(
-        $._terra_expression,
-        operator,
-        $._terra_expression
-      )))
-    ),
-
-    terra_unary_operation: $ => prec.left(PREC.UNARY, seq(
-      choice('not', '#', '-', '~'),
-      $._terra_expression
-    )),
     // Expressions: Primitives
     number: $ => {
       const decimal_digits = /[0-9]+/
@@ -554,26 +564,66 @@ module.exports = grammar({
     false: $ => 'false',
 
     // Identifier
-    identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/
+    identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
+
+    // Expressions: Operation expressions
+    terra_binary_op: $ => choice(
+      ...[
+        ['or', PREC.OR],
+        ['and', PREC.AND],
+        ['<', PREC.COMPARE],
+        ['<=', PREC.COMPARE],
+        ['==', PREC.COMPARE],
+        ['~=', PREC.COMPARE],
+        ['>=', PREC.COMPARE],
+        ['>', PREC.COMPARE],
+        //['|', PREC.BIT_OR],
+        ['~', PREC.BIT_NOT],
+        //['&', PREC.BIT_AND], Pointer operator
+        ['<<', PREC.SHIFT],
+        ['>>', PREC.SHIFT],
+        ['+', PREC.PLUS],
+        ['-', PREC.PLUS],
+        ['*', PREC.MULTI],
+        ['/', PREC.MULTI],
+        // ['//', PREC.MULTI],
+        ['%', PREC.MULTI],
+      ].map(([operator, precedence]) => prec.left(precedence, seq(
+        $._terra_expression,
+        operator,
+        $._terra_expression
+      ))),
+      ...[
+        // ['..', PREC.CONCAT],
+        ['^', PREC.POWER],
+      ].map(([operator, precedence]) => prec.right(precedence, seq(
+        $._terra_expression,
+        operator,
+        $._terra_expression
+      )))
+    ),
+    terra_unary_op: $ => prec.left(PREC.UNARY, seq(
+      choice('not', '#', '-', '~', '&'),
+      $._terra_expression
+    )),
+
+    terra_body: $ => choice(
+      repeat1($._terra_statement),
+      seq(repeat($._terra_statement), $.terra_return),
+      $.terra_return
+    ),
   }
 })
 
 function commaSeq(rule) {
-  return seq(rule, repeat(seq(',', rule)))
+  return seq(rule, repeat(seq(',', rule)));
 }
 
-function statement_list($) {
-  return seq(
-    repeat($._statement),
-    optional($.return_statement)
-  );
+function terra_body($, name) {
+  var rule = optional($.terra_body);
+  if (name) {
+    return alias(rule, $[name]);
+  } else {
+    return rule;
+  }
 }
-
-function terra_statement_list($) {
-  return seq(
-    repeat($._terra_statement),
-    optional($.terra_return_statement)
-  );
-}
-
-
